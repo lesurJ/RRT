@@ -27,4 +27,3 @@ All of this works well for high dimensional problems. However, the plotting func
 
 *Note : This planner can easily be used with robotic manipulators. I successfully used it on a KUKA iiwa7 robot. For this, the RRT was conducted in the joint space of the robot while the collision detection was done in the task space. I used the PyBullet simulator with an urdf file of my robot. The plotting function was slightly modified to project the Tool-Center-Point of the robot with the help of the forward kinematic.*
 
-## How To Use
