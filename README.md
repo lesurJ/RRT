@@ -1,5 +1,6 @@
-# RRT
-Rapidly-exploring Random Tree
+# Rapidly-exploring Random Tree
+
+![alt text](https://github.com/lesurJ/RRT/blob/main/RRT.png)
 
 ## Introduction
 
