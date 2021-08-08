@@ -4,37 +4,33 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# from matplotlib.figure import Figure
-# from mpl_toolkits import mplot3d
-
 class RRTNode():
-    """ This class helps representing a single node in the RRT."""
+    """ This class helps representing a node in the RRT."""
     def __init__(self, id, pos, previous):
-        self.id = id
+        self.id = id #id of current node
         self.node = pos
-        self.previous_id = previous
+        self.previous_id = previous #id of the node at the other end of the edge
 
 class RRT():
     """ This class constructs a RRT in a N-dimensional space given a start and a goal node.
     """
     def __init__(self, N, start, goal, stepsize=0.1, beta=0.5):
+        self.N = N # dimension of the problem
+        self.bounds = np.ones(self.N) # change this to any value you want; the bounds are assumed to be symmetric
+
+        self.start = None
+        self.goal = None    
+        self.setStartGoal(start, goal)
+
+        # VERTICES & EDGES
         self.path = []
         self.visited_nodes = []
         self.optimized_path = []
-        self.smoothed_path = []
-        
-        self.N = N # dimension of the problem
-        self.bounds = np.ones(self.N) # change this to any value you want; bounds assumed to be symmetric
-        
-        self.start = None
-        self.goal = None
-        self.setStartGoal(start, goal)
+        self.edges = []
 
         # HYPERPARAMETERS
         self.stepsize = stepsize
         self.beta = beta
-
-        self.edges = []
 
     def setStartGoal(self, start, goal):
         """
@@ -69,12 +65,11 @@ class RRT():
             self.visited_nodes, self.path, self.optimized_path = self.runRRT_single()
         elif mode == 'dual':
             self.visited_nodes, self.path, self.optimized_path = self.runRRT_dual()
-        self.smoothOptimizedPath()
         self.optimized_path = [item.node for item in self.optimized_path]
 
-        # # Here you can use dimension reduction for example
+        # Depending on your needs, you might want to reduce dimension of the RRT path !
+        # Here you can use dimension reduction for example
         # self.reduceDimension(0)
-
 
     def runRRT_single(self):
         """Construct a single RRT tree, find its path and optimize it."""
@@ -140,6 +135,11 @@ class RRT():
             idCounter0 = self.add(tree0, q0, idCounter0, prev.id)
             self.edges.append([prev.node, q0])
 
+            nearest1 = self.getNearest(q0, tree1)
+            if np.linalg.norm(tree1[nearest1].node - q0) < self.stepsize:
+                self.add(tree1, q0, idCounter1, tree1[nearest1].id)
+                break
+
             q1, prev, isProblematic = self.getProposalTowards(rrt1_goal, tree1)
             while isProblematic:
                 q1, prev, isProblematic = self.getProposalTowards(self.getRandomTarget(), tree1)
@@ -147,20 +147,9 @@ class RRT():
             self.edges.append([prev.node, q1])
 
             nearest0 = self.getNearest(q1, tree0)
-            nearest1 = self.getNearest(q0, tree1)
-
-            finish0 = np.linalg.norm(tree0[nearest0].node - q1) < self.stepsize
-            finish1 = np.linalg.norm(tree1[nearest1].node - q0) < self.stepsize
-
-            if finish0:
-                success = True
-                # self.edges.append([tree0[nearest0].node, q1])
-                self.add(tree0, q1, idCounter0, idCounter0-1)
-
-            # elif finish1:
-            #     success = True
-            #     # self.edges.append([tree1[nearest1].node, q0])
-            #     self.add(tree1, q0, idCounter1, idCounter1-1)
+            if np.linalg.norm(tree0[nearest0].node - q1) < self.stepsize:
+                self.add(tree0, q1, idCounter0, tree0[nearest0].id)
+                break
 
         path = self.findPath(tree0)
         path += self.findPath(tree1, reverse=False)
@@ -217,9 +206,8 @@ class RRT():
                 prev_id : id of the previous node (the parent node)
         """
         new = RRTNode(id, q, prev_id)
-        id += 1
         tree.append(new)
-        return id
+        return id+1
 
     def findPath(self, tree, reverse=True):
         """ Retrieve the path from start to goal in the tree.
@@ -249,18 +237,13 @@ class RRT():
         """ Checks if configuration q triggers a collision with obstacles.
         """
         # dummy implementation, change it to your convenience
-        return np.random.randint(2)
+        if np.linalg.norm(np.zeros(N) - q) < 0.25: # avoid center of radius 0.25 centered at the origin
+            return True
+        else:
+            return False
 
         # this should be preferred : 
         # return simulation.verify_collision(q)
-
-    def reduceDimension(self, mylist):
-        """ Reduces dimensionality of the data (dim N), to allow plotting them for example."""
-        # dummy implementation
-        return mylist 
-
-        # For robotic manipulators, make use of the forward kinematic !
-        # return forward_kinematics(mylist)
 
     def freePath(self, a, b):
         """ Checks whether the path connecting a to b in joint space is free in
@@ -305,23 +288,9 @@ class RRT():
                     finished = True
         return optimized_path
 
-    def smoothOptimizedPath(self):
-        """ Add points to the optimized path to enforce the given trajectory to
-            the robot.
-        """
-        self.smoothed_path = []
-        for i in range(len(self.optimized_path)-1):
-            a = self.optimized_path[i].node
-            b = self.optimized_path[i+1].node
-            size = int(np.linalg.norm(a - b)/self.stepsize)
-            for s in range(size):
-                p = a + s/size * (b - a)
-                self.smoothed_path.append(list(p))
-        self.smoothed_path.append(list(self.optimized_path[-1].node))
-
     def plot(self):
         """
-        Plot the visited nodes, retrieved and smoothed path as well as start and
+        Plot the visited nodes, retrieved as well as start and
         goal.
         """
         if self.N == 2:
@@ -329,7 +298,9 @@ class RRT():
             ax.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')           
             ax.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
             # ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized', c='red')
-            # ax.plot([item[0] for item in self.smoothed_path], [item[1] for item in self.smoothed_path], label='smoothed', c='purple')
+
+            # for i in range(len(self.path)):
+            #     ax.annotate(f"{i}", (self.path[i].node[0],self.path[i].node[1]))
 
             for e in self.edges:
                 _from, _to = e
@@ -337,13 +308,17 @@ class RRT():
 
             ax.scatter(self.start[0], self.start[1], label='start', c='red')
             ax.scatter(self.goal[0], self.goal[1], label='goal', c='green')
-            
+
+            c1 = plt.Circle((0,0), 0.25, color='gray')
+            ax.add_patch(c1)
+
             plt.xlim([-1,1])
             plt.ylim([-1,1])
             plt.legend()
             fig.suptitle("Rapidly-exploring Random Tree")
             plt.xlabel("dimension 1")
             plt.ylabel("dimension 2")
+            plt.axis('equal')
             plt.show()
 
         elif self.N == 3:
@@ -354,8 +329,6 @@ class RRT():
             ax.plot3D([item.node[0] for item in self.path], [item.node[1] for item in self.path], [item.node[2] for item in self.path], label='path', c='blue')
 
             # ax.plot3D([item[0] for item in self.cart_optimized_path], [item[1] for item in self.cart_optimized_path], [item[2] for item in self.cart_optimized_path], label='cart. opti. path', c='magenta')
-            # ax.scatter3D([item[0] for item in self.cart_smoothed_opti_path], [item[1] for item in self.cart_smoothed_opti_path], [item[2] for item in self.cart_smoothed_opti_path], label='smoothed cart. opti. path', c='purple')
-            # ax.plot3D([item[0] for item in self.cart_smoothed_opti_path], [item[1] for item in self.cart_smoothed_opti_path], [item[2] for item in self.cart_smoothed_opti_path], c='purple')
 
             for e in self.edges:
                 _from, _to = e
@@ -377,8 +350,8 @@ class RRT():
 
 
 if __name__=='__main__':
-    N = 3
-    r = RRT(N, -0.5*np.ones(N), 0.5*np.ones(N), beta=0.5)
+    N = 2
+    r = RRT(N, -0.5*np.ones(N), 0.5*np.ones(N))
     r.runRRT()
     r.plot()
 

@@ -14,13 +14,13 @@ For the development of this code I was inspired by
 
 I assume that you are already familiar with the concept of RRT.
 
-The hyperparameters must be set according to your needs.
+The hyperparameters must be set according to your needs. By default, the stepsize alpha is at 0.1 and the bias beta is at 0.5.
 
-The collision detection function must be set according to your needs. A geometrical approach (based on obstacles shapes) works well but requires a loop over all obstacles and can become cumbersome with complex obstacles. The use of a simulation taking care of collision is therefore preferred (e.g Pybullet as it is very easy to use and fast!).
-
-By default, this implementation uses a bidirectionnal search. 
+The collision detection function must be set according to your needs. A geometrical approach (based on obstacles shapes) works well but requires a loop over all obstacles and can become cumbersome with complex obstacles. The use of a simulation taking care of collision is therefore preferred (e.g Pybullet as it is very easy to use and fast!). In the actual implementation, the RRT tries to avoid a circle with radius 0.25 centered at the origin.
 
 
 
+This algorithm solves a 
+By default, this implementation uses a bidirectionnal search.
 
 ## How To Use
