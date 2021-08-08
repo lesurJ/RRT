@@ -15,6 +15,7 @@ class RRT():
     """ This class constructs a RRT in a N-dimensional space given a start and a goal node.
     """
     def __init__(self, N, start, goal, stepsize=0.1, beta=0.5):
+        # PROBLEM PARAMETERS
         self.N = N # dimension of the problem
         self.bounds = np.ones(self.N) # change this to any value you want; the bounds are assumed to be symmetric
 
@@ -36,8 +37,8 @@ class RRT():
         """
         Set start and goal positions of the RRT.
         params:
-             start : start position in joint space
-             goal  : goal position in joint space
+             start : start position in search space
+             goal  : goal position in search space
         """
         if len(start) == self.N:
             self.start = start
@@ -49,14 +50,6 @@ class RRT():
         else:
             raise ValueError(f"[ERROR] : goal (dim {len(goal)}) does not have the proper dimensionality (dim {self.N})")
 
-    def setParameters(self, ui):
-        """ a callback to be called when sliders in the GUI are changed
-            params:
-                ui : the user interface object
-        """
-        self.beta = ui.horizontalSlider_rrtBeta.value()/100
-        self.stepsize = ui.horizontalSlider_rrtStepsize.value()*0.05
-
     def runRRT(self, mode='dual'):
         """
         Run the RRT algorithm, find executable path and data.
@@ -66,10 +59,6 @@ class RRT():
         elif mode == 'dual':
             self.visited_nodes, self.path, self.optimized_path = self.runRRT_dual()
         self.optimized_path = [item.node for item in self.optimized_path]
-
-        # Depending on your needs, you might want to reduce dimension of the RRT path !
-        # Here you can use dimension reduction for example
-        # self.reduceDimension(0)
 
     def runRRT_single(self):
         """Construct a single RRT tree, find its path and optimize it."""
@@ -81,23 +70,30 @@ class RRT():
         new = RRTNode(0, self.start, None)
         tree.append(new)
         while not success:
+            # SAMPLING : find the direction of the growth (target or random)
             if np.random.rand() < self.beta :
                 rrt_goal = self.goal
             else:
                 rrt_goal = self.getRandomTarget()
 
+            # GROWTH : grow the tree in the direction of the current sample.
+            # If this is not possible due to constraint violation, grow the
+            # tree towards a random sample
             q, prev, isProblematic = self.getProposalTowards(rrt_goal, tree)
             while isProblematic:
                 q, prev, isProblematic = self.getProposalTowards(self.getRandomTarget(), tree)
             idCounter = self.add(tree, q, idCounter, prev.id)
             self.edges.append([prev.node, q])
 
+            # EXIT CONDITION : are we close enough to the target ?
             if np.linalg.norm(q - self.goal) < self.stepsize:
                 success = True
 
+        # Add the target to the tree
         self.edges.append([tree[-1].node, self.goal])
         idCounter = self.add(tree, self.goal, idCounter, idCounter-1)
 
+        # PATH RETRIEVAL : finish RRT
         path = self.findPath(tree)
         optimized_path = self.optimizePath(path)
         visited_nodes = [list(item.node) for item in tree]
@@ -106,11 +102,11 @@ class RRT():
 
     def runRRT_dual(self):
         """
-        Construct 2 RRT and make them grow towards each other. Find the total
+        Construct 2 RRTs and make them grow towards each other. Find the total
         path and optimize it.
         """
-        tree0 = [] # 0 is start
-        tree1 = [] # 1 is goal
+        tree0 = [] # 0 is the tree growing form the start configuration
+        tree1 = [] # 1 is the tree growing from the target configuration
 
         idCounter0 = 1
         idCounter1 = 1
@@ -120,6 +116,7 @@ class RRT():
         init1 = RRTNode(0, self.goal, None)
         tree1.append(init1)
         while not success:
+            # SAMPLING : find the direction of the growth (target or random) for the two trees
             if np.random.rand() < self.beta :
                 nearest1 = self.getNearest(tree0[-1].node, tree1)
                 nearest0 = self.getNearest(tree1[-1].node, tree0)
@@ -129,28 +126,37 @@ class RRT():
                 rrt0_goal = self.getRandomTarget()
                 rrt1_goal = self.getRandomTarget()
 
+            # GROWTH : grow the first tree in the direction of the current sample.
+            # If this is not possible due to constraint violation, grow the
+            # first tree towards a random sample
             q0, prev, isProblematic = self.getProposalTowards(rrt0_goal, tree0)
             while isProblematic:
                 q0, prev, isProblematic = self.getProposalTowards(self.getRandomTarget(), tree0)
             idCounter0 = self.add(tree0, q0, idCounter0, prev.id)
-            self.edges.append([prev.node, q0])
+            self.edges.append([prev.node, q0]) # keep track of edges in the tree for plotting
 
+            # Verify if the newly appended node is close enough the the other tree.
             nearest1 = self.getNearest(q0, tree1)
             if np.linalg.norm(tree1[nearest1].node - q0) < self.stepsize:
                 self.add(tree1, q0, idCounter1, tree1[nearest1].id)
                 break
 
+            # GROWTH : grow the second tree in the direction of the current sample.
+            # If this is not possible due to constraint violation, grow the
+            # second tree towards a random sample
             q1, prev, isProblematic = self.getProposalTowards(rrt1_goal, tree1)
             while isProblematic:
                 q1, prev, isProblematic = self.getProposalTowards(self.getRandomTarget(), tree1)
             idCounter1 = self.add(tree1, q1, idCounter1, prev.id)
             self.edges.append([prev.node, q1])
 
+            # Verify if the newly appended node is close enough the the other tree.
             nearest0 = self.getNearest(q1, tree0)
             if np.linalg.norm(tree0[nearest0].node - q1) < self.stepsize:
                 self.add(tree0, q1, idCounter0, tree0[nearest0].id)
                 break
 
+        # PATH RETRIEVAL : the total path is the concatenation of the paths of the two trees.
         path = self.findPath(tree0)
         path += self.findPath(tree1, reverse=False)
 
@@ -176,7 +182,7 @@ class RRT():
             closest point to it in the tree and compute a new branch in this
             direction.
             params:
-                x_goal : the point in joint space that we want to reach.
+                x_goal : the point in search space that we want to reach.
                 tree   : rrt tree in which to find the closest point.
         """
 
@@ -185,8 +191,8 @@ class RRT():
         dist = np.linalg.norm(diff)
         x_new = tree[nearest].node + self.stepsize/dist * diff
 
-        isOutsideRange = self.checkBounds(x_new)
-        isCollision = self.checkCollision(x_new)
+        isOutsideRange = self.checkBounds(x_new) # does the new configuration respect constraints ?
+        isCollision = self.checkCollision(x_new) # does the new configuration trigger a collision ?
         flag = isOutsideRange or isCollision
         return x_new, tree[nearest], flag
 
@@ -201,7 +207,7 @@ class RRT():
         """ Adds a new node object in the tree.
             params:
                 tree    : the rrt tree in which one adds a point
-                q       : point in joint space of the new node
+                q       : point in search space of the new node
                 id      : id of the new node
                 prev_id : id of the previous node (the parent node)
         """
@@ -225,9 +231,9 @@ class RRT():
         return path
 
     def checkBounds(self, q):
-        """ Checks whether a point in joint space is reachable.
+        """ Checks whether a point in search space is reachable.
             params:
-                q : point in joint space to be checked.
+                q : point in search space to be checked.
         """
         if (np.abs(q) >= self.bounds).any():
             return True
@@ -242,11 +248,11 @@ class RRT():
         else:
             return False
 
-        # this should be preferred : 
+        # a check conducted in simulation should be preferred (e.g with Pybullet)
         # return simulation.verify_collision(q)
 
     def freePath(self, a, b):
-        """ Checks whether the path connecting a to b in joint space is free in
+        """ Checks whether the path connecting a to b in search space is free in
             task space.
             params:
                 a : start point
@@ -290,21 +296,18 @@ class RRT():
 
     def plot(self):
         """
-        Plot the visited nodes, retrieved as well as start and
-        goal.
+        Plot the visited nodes, retrieved path as well as start and goal.
         """
         if self.N == 2:
             fig, ax = plt.subplots()
-            ax.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')           
-            ax.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
-            # ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized', c='red')
-
-            # for i in range(len(self.path)):
-            #     ax.annotate(f"{i}", (self.path[i].node[0],self.path[i].node[1]))
 
             for e in self.edges:
                 _from, _to = e
-                ax.plot([_from[0], _to[0]],[_from[1], _to[1]], c='black', linestyle=':')
+                ax.plot([_from[0], _to[0]],[_from[1], _to[1]], c='black', linestyle='-')
+
+            ax.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')           
+            ax.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
+            ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
 
             ax.scatter(self.start[0], self.start[1], label='start', c='red')
             ax.scatter(self.goal[0], self.goal[1], label='goal', c='green')
@@ -324,15 +327,14 @@ class RRT():
         elif self.N == 3:
             fig = plt.figure()
             ax = plt.axes(projection='3d')
-            
-            ax.scatter3D([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], [item[2] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')
-            ax.plot3D([item.node[0] for item in self.path], [item.node[1] for item in self.path], [item.node[2] for item in self.path], label='path', c='blue')
-
-            # ax.plot3D([item[0] for item in self.cart_optimized_path], [item[1] for item in self.cart_optimized_path], [item[2] for item in self.cart_optimized_path], label='cart. opti. path', c='magenta')
 
             for e in self.edges:
                 _from, _to = e
-                ax.plot3D([_from[0], _to[0]],[_from[1], _to[1]],[_from[2], _to[2]], c='black', linestyle=':')
+                ax.plot3D([_from[0], _to[0]],[_from[1], _to[1]],[_from[2], _to[2]], c='black', linestyle='-')
+            
+            ax.scatter3D([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], [item[2] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')
+            ax.plot3D([item.node[0] for item in self.path], [item.node[1] for item in self.path], [item.node[2] for item in self.path], label='path', c='blue')
+            ax.plot3D([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], [item[2] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
 
             ax.scatter3D(self.start[0], self.start[1], self.start[2], label='start', c='red')
             ax.scatter3D(self.goal[0], self.goal[1], self.goal[2], label='goal', c='green')
@@ -350,9 +352,13 @@ class RRT():
 
 
 if __name__=='__main__':
+    # 1. Choose dimension of the problem.
     N = 2
+    # 2. Instantiate the RRT object with N, the start and the goal configurations.
     r = RRT(N, -0.5*np.ones(N), 0.5*np.ones(N))
-    r.runRRT()
+    # 3. Run the RRT planner (the default one uses bidirectional search)
+    r.runRRT(mode='dual')
+    # 4. Plot the results
     r.plot()
 
 # <END OF FILE>
