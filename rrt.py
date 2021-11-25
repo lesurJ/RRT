@@ -3,6 +3,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import utils
 
 class RRTNode():
     """ This class helps representing a node in the RRT."""
@@ -14,14 +15,17 @@ class RRTNode():
 class RRT():
     """ This class constructs a RRT in a N-dimensional space given a start and a goal node.
     """
-    def __init__(self, N, start, goal, stepsize=0.1, beta=0.5):
+    def __init__(self, N, start=None, goal=None, stepsize=0.1, beta=0.5):
         # PROBLEM PARAMETERS
         self.N = N # dimension of the problem
         self.bounds = np.ones(self.N) # change this to any value you want; the bounds are assumed to be symmetric
 
-        self.start = None
-        self.goal = None    
-        self.setStartGoal(start, goal)
+        self.start = start if start is not None else self.getRandomTarget()
+        self.goal = goal if goal is not None else self.getRandomTarget()
+
+        # OBSTACLES
+        self.nb_obstacles = 50
+        self.obstacles = self.generateObstacles()
 
         # VERTICES & EDGES
         self.path = []
@@ -32,23 +36,6 @@ class RRT():
         # HYPERPARAMETERS
         self.stepsize = stepsize
         self.beta = beta
-
-    def setStartGoal(self, start, goal):
-        """
-        Set start and goal positions of the RRT.
-        params:
-             start : start position in search space
-             goal  : goal position in search space
-        """
-        if len(start) == self.N:
-            self.start = start
-        else:
-            raise ValueError(f"[ERROR] : start (dim {len(start)}) does not have the proper dimensionality (dim {self.N})")
-
-        if len(goal) == self.N:
-            self.goal = goal
-        else:
-            raise ValueError(f"[ERROR] : goal (dim {len(goal)}) does not have the proper dimensionality (dim {self.N})")
 
     def runRRT(self, mode='dual'):
         """
@@ -239,14 +226,31 @@ class RRT():
             return True
         return False
 
+    def generateObstacles(self):
+        """ Compute random positions and sizes of the obstacles"""
+        obstacles = []
+        for _ in range(self.nb_obstacles):
+            pos = self.getRandomTarget()
+            r = np.random.uniform(0.05,0.20)
+            if np.linalg.norm(pos - self.start) < r or np.linalg.norm(pos - self.goal) < r:
+                continue
+            else:
+                obstacles.append([pos, r])
+        return obstacles
+
     def checkCollision(self, q):
         """ Checks if configuration q triggers a collision with obstacles.
         """
-        # dummy implementation, change it to your convenience
-        if np.linalg.norm(np.zeros(N) - q) < 0.25: # avoid center of radius 0.25 centered at the origin
-            return True
-        else:
-            return False
+        
+        for o in self.obstacles:
+            pos, r = o
+            if np.linalg.norm(pos - q) < r:
+                return True
+
+        return False
+
+        # # dummy implementation, change it to your convenience
+
 
         # a check conducted in simulation should be preferred (e.g with Pybullet)
         # return simulation.verify_collision(q)
@@ -309,14 +313,22 @@ class RRT():
             ax.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
             ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
 
+            timeline = np.linspace(0,1,200)
+            points = []
+            for t in timeline:
+                points.append(utils.BezierCurve([item.node for item in self.path], t))
+            ax.plot([p[0] for p in points], [p[1] for p in points], label='Bezier', c='magenta')
+
             ax.scatter(self.start[0], self.start[1], label='start', c='red')
             ax.scatter(self.goal[0], self.goal[1], label='goal', c='green')
 
-            c1 = plt.Circle((0,0), 0.25, color='gray')
-            ax.add_patch(c1)
+            for o in self.obstacles:
+                pos, r = o
+                c = plt.Circle(pos, r, color='gray', alpha=0.5)
+                ax.add_patch(c)
 
-            plt.xlim([-1,1])
-            plt.ylim([-1,1])
+            plt.xlim([-self.bounds[0],self.bounds[0]])
+            plt.ylim([-self.bounds[1],self.bounds[1]])
             plt.legend()
             fig.suptitle("Rapidly-exploring Random Tree")
             plt.xlabel("dimension 1")
