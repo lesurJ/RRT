@@ -311,13 +311,15 @@ class RRT():
 
             ax.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')           
             ax.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
-            ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
+            # ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
 
-            timeline = np.linspace(0,1,200)
-            points = []
-            for t in timeline:
-                points.append(utils.BezierCurve([item.node for item in self.path], t))
-            ax.plot([p[0] for p in points], [p[1] for p in points], label='Bezier', c='magenta')
+            colors = 5*["cyan", "magenta", "yellow"]
+            for order in range(3):
+                timeline = np.linspace(0,1,200)
+                points = []
+                for t in timeline:
+                    points.append(utils.BezierCurve([item.node for item in self.path for _ in np.ones(order+1)], t))
+                ax.plot([p[0] for p in points], [p[1] for p in points], label=f"Bezier {order}", c=colors[order])
 
             ax.scatter(self.start[0], self.start[1], label='start', c='red')
             ax.scatter(self.goal[0], self.goal[1], label='goal', c='green')
