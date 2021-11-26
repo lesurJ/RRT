@@ -3,7 +3,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import utils
+import math
 
 class RRTNode():
     """ This class helps representing a node in the RRT."""
@@ -19,12 +19,11 @@ class RRT():
         # PROBLEM PARAMETERS
         self.N = N # dimension of the problem
         self.bounds = np.ones(self.N) # change this to any value you want; the bounds are assumed to be symmetric
-
         self.start = start if start is not None else self.getRandomTarget()
         self.goal = goal if goal is not None else self.getRandomTarget()
 
         # OBSTACLES
-        self.nb_obstacles = 50
+        self.nb_obstacles = 15
         self.obstacles = self.generateObstacles()
 
         # VERTICES & EDGES
@@ -37,15 +36,26 @@ class RRT():
         self.stepsize = stepsize
         self.beta = beta
 
+        # SMOOTHING
+        self.smooth_enable = True
+        self.smoothed_path = []
+        self.smoothing_order = 1
+        self.smoothing_order_max = 7
+        self.smoothing_resolution = 200
+        self.spacing = np.linspace(0,1,self.smoothing_resolution)
+
     def runRRT(self, mode='dual'):
         """
         Run the RRT algorithm, find executable path and data.
         """
         if mode == 'single':
-            self.visited_nodes, self.path, self.optimized_path = self.runRRT_single()
+            self.visited_nodes, self.path = self.runRRT_single()
         elif mode == 'dual':
-            self.visited_nodes, self.path, self.optimized_path = self.runRRT_dual()
-        self.optimized_path = [item.node for item in self.optimized_path]
+            self.visited_nodes, self.path = self.runRRT_dual()
+
+        self.optimized_path = [item.node for item in self.optimizePath(self.path)]
+        if self.smooth_enable:
+            self.smoothed_path = self.smoothPath(self.path)
 
     def runRRT_single(self):
         """Construct a single RRT tree, find its path and optimize it."""
@@ -82,10 +92,9 @@ class RRT():
 
         # PATH RETRIEVAL : finish RRT
         path = self.findPath(tree)
-        optimized_path = self.optimizePath(path)
         visited_nodes = [list(item.node) for item in tree]
 
-        return visited_nodes, path, optimized_path
+        return visited_nodes, path
 
     def runRRT_dual(self):
         """
@@ -147,12 +156,10 @@ class RRT():
         path = self.findPath(tree0)
         path += self.findPath(tree1, reverse=False)
 
-        optimized_path = self.optimizePath(path)
-
         visited_nodes = [list(item.node) for item in tree0]
         visited_nodes += [list(item.node) for item in tree1]
 
-        return visited_nodes, path, optimized_path
+        return visited_nodes, path
 
     def getNearest(self, x_goal, tree):
         """ Find the index of the closest to x_goal in a RRT tree.
@@ -231,7 +238,7 @@ class RRT():
         obstacles = []
         for _ in range(self.nb_obstacles):
             pos = self.getRandomTarget()
-            r = np.random.uniform(0.05,0.20)
+            r = np.random.uniform(0.1,0.3)
             if np.linalg.norm(pos - self.start) < r or np.linalg.norm(pos - self.goal) < r:
                 continue
             else:
@@ -298,44 +305,82 @@ class RRT():
                     finished = True
         return optimized_path
 
+    def smoothPath(self, path):
+        """ Smooth the path found by RRT using a Bézier curve. The order 
+            of smoothness (number of appearance of each point along the curve)
+            will increase if there is a collision between the smoothed path and
+            the obstacles.
+        """
+        smoothed_path = []
+        isValid = False
+        while not isValid:
+            if self.smoothing_order >= self.smoothing_order_max:
+                smoothed_path = []
+                print("Sorry : unable to use a Bézier curve for smoothing")
+                break
+            flag = True
+            smoothed_path = self.BezierCurve([item.node for item in path for _ in range(self.smoothing_order)])
+            for p in smoothed_path:
+                if self.checkCollision(p):
+                    flag = False
+                    self.smoothing_order += 1
+                    break
+            
+            if flag:
+                isValid = True
+        return smoothed_path
+        
+    def BernsteinPolynomial(self, n, i):
+        """ Compute the Bernstein polynomial """
+        return lambda t: math.comb(n,i) * t**i * (1-t)**(n-i)
+
+    def BezierCurve(self, vectors):
+        """ Given a collection of control points, find the parametric Bezier curve"""
+        n = len(vectors)
+        points = []
+        for t in self.spacing:
+            polynomial = np.array([self.BernsteinPolynomial(n-1, i) for i in range(n)])
+            points.append(np.array(vectors).T @ [p(t) for p in polynomial])
+        return points
+
     def plot(self):
         """
         Plot the visited nodes, retrieved path as well as start and goal.
         """
         if self.N == 2:
-            fig, ax = plt.subplots()
+            fig, (ax1, ax2) = plt.subplots(1,2)
 
             for e in self.edges:
                 _from, _to = e
-                ax.plot([_from[0], _to[0]],[_from[1], _to[1]], c='black', linestyle='-')
+                ax1.plot([_from[0], _to[0]],[_from[1], _to[1]], c='black', linestyle='-')
+            ax1.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='.')           
+            ax1.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
+            ax1.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
+            ax1.scatter(self.start[0], self.start[1], label='start', c='red')
+            ax1.scatter(self.goal[0], self.goal[1], label='goal', c='green')
 
-            ax.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')           
-            ax.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
-            # ax.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
+            ax2.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
+            ax2.plot([p[0] for p in self.smoothed_path], [p[1] for p in self.smoothed_path], label=f"Bezier curve", c='green')
+            ax2.scatter(self.start[0], self.start[1], label='start', c='red')
+            ax2.scatter(self.goal[0], self.goal[1], label='goal', c='green')
 
-            colors = 5*["cyan", "magenta", "yellow"]
-            for order in range(3):
-                timeline = np.linspace(0,1,200)
-                points = []
-                for t in timeline:
-                    points.append(utils.BezierCurve([item.node for item in self.path for _ in np.ones(order+1)], t))
-                ax.plot([p[0] for p in points], [p[1] for p in points], label=f"Bezier {order}", c=colors[order])
-
-            ax.scatter(self.start[0], self.start[1], label='start', c='red')
-            ax.scatter(self.goal[0], self.goal[1], label='goal', c='green')
-
+            
             for o in self.obstacles:
                 pos, r = o
                 c = plt.Circle(pos, r, color='gray', alpha=0.5)
-                ax.add_patch(c)
+                ax1.add_patch(c)
+                c = plt.Circle(pos, r, color='gray', alpha=0.5)
+                ax2.add_patch(c)
 
-            plt.xlim([-self.bounds[0],self.bounds[0]])
-            plt.ylim([-self.bounds[1],self.bounds[1]])
-            plt.legend()
-            fig.suptitle("Rapidly-exploring Random Tree")
-            plt.xlabel("dimension 1")
-            plt.ylabel("dimension 2")
-            plt.axis('equal')
+            for a, title in zip((ax1, ax2), ['RRT', 'Smoothing']):
+                a.set_xlim([-self.bounds[0],self.bounds[0]])
+                a.set_ylim([-self.bounds[1],self.bounds[1]])
+                a.legend()
+                a.set_title(title)
+                a.set_xlabel('dim. 1')
+                a.set_ylabel('dim. 2')
+                a.axis('square')
+            fig.suptitle('Rapidly-exploring Random Tree')
             plt.show()
 
         elif self.N == 3:
@@ -346,12 +391,23 @@ class RRT():
                 _from, _to = e
                 ax.plot3D([_from[0], _to[0]],[_from[1], _to[1]],[_from[2], _to[2]], c='black', linestyle='-')
             
-            ax.scatter3D([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], [item[2] for item in self.visited_nodes], label='visited nodes', c='black', marker='o')
+            ax.scatter3D([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], [item[2] for item in self.visited_nodes], label='visited nodes', c='black', marker='.')
             ax.plot3D([item.node[0] for item in self.path], [item.node[1] for item in self.path], [item.node[2] for item in self.path], label='path', c='blue')
             ax.plot3D([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], [item[2] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
+            ax.plot3D([item[0] for item in self.smoothed_path], [item[1] for item in self.smoothed_path], [item[2] for item in self.smoothed_path], label='path', c='green')
 
             ax.scatter3D(self.start[0], self.start[1], self.start[2], label='start', c='red')
             ax.scatter3D(self.goal[0], self.goal[1], self.goal[2], label='goal', c='green')
+
+            for o in self.obstacles:
+                pos, r = o
+                u, v = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
+                x = r*np.cos(u)*np.sin(v)
+                y = r*np.sin(u)*np.sin(v)
+                z = r*np.cos(v)
+                ax.plot_wireframe(pos[0] + x, pos[1] + y, pos[2] + z, color="r", linewidth=0.25)
+
+
 
             ax.set_xlim3d([-1, 1])
             ax.set_ylim3d([-1, 1])
@@ -368,8 +424,8 @@ class RRT():
 if __name__=='__main__':
     # 1. Choose dimension of the problem.
     N = 2
-    # 2. Instantiate the RRT object with N, the start and the goal configurations.
-    r = RRT(N, -0.5*np.ones(N), 0.5*np.ones(N))
+    # 2. Instantiate the RRT object with N, you may indicate the start and the goal configurations.
+    r = RRT(N, start=-0.75*np.ones(N), goal=0.75*np.ones(N))
     # 3. Run the RRT planner (the default one uses bidirectional search)
     r.runRRT(mode='dual')
     # 4. Plot the results
