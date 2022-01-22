@@ -23,7 +23,7 @@ class RRT():
         self.goal = goal if goal is not None else self.getRandomTarget()
 
         # OBSTACLES
-        self.nb_obstacles = 15
+        self.nb_obstacles = 10
         self.obstacles = self.generateObstacles()
 
         # VERTICES & EDGES
@@ -56,6 +56,7 @@ class RRT():
         self.optimized_path = [item.node for item in self.optimizePath(self.path)]
         if self.smooth_enable:
             self.smoothed_path = self.smoothPath(self.path)
+        self.path = [item.node for item in self.path]
 
     def runRRT_single(self):
         """Construct a single RRT tree, find its path and optimize it."""
@@ -354,12 +355,12 @@ class RRT():
                 _from, _to = e
                 ax1.plot([_from[0], _to[0]],[_from[1], _to[1]], c='black', linestyle='-')
             ax1.scatter([item[0] for item in self.visited_nodes], [item[1] for item in self.visited_nodes], label='visited nodes', c='black', marker='.')           
-            ax1.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
+            ax1.plot([item[0] for item in self.path], [item[1] for item in self.path], label='path', c='blue')
             ax1.plot([item[0] for item in self.optimized_path], [item[1] for item in self.optimized_path], label='optimized path', c='red', linestyle='--')
             ax1.scatter(self.start[0], self.start[1], label='start', c='red')
             ax1.scatter(self.goal[0], self.goal[1], label='goal', c='green')
 
-            ax2.plot([item.node[0] for item in self.path], [item.node[1] for item in self.path], label='path', c='blue')
+            ax2.plot([item[0] for item in self.path], [item[1] for item in self.path], label='path', c='blue')
             ax2.plot([p[0] for p in self.smoothed_path], [p[1] for p in self.smoothed_path], label=f"Bezier curve", c='green')
             ax2.scatter(self.start[0], self.start[1], label='start', c='red')
             ax2.scatter(self.goal[0], self.goal[1], label='goal', c='green')
