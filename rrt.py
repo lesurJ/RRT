@@ -15,10 +15,10 @@ class RRTNode():
 class RRT():
     """ This class constructs a RRT in a N-dimensional space given a start and a goal node.
     """
-    def __init__(self, N, start=None, goal=None, stepsize=0.1, beta=0.5):
+    def __init__(self, N, bounds=None, start=None, goal=None, stepsize=0.1, beta=0.5):
         # PROBLEM PARAMETERS
         self.N = N # dimension of the problem
-        self.bounds = np.ones(self.N) # change this to any value you want; the bounds are assumed to be symmetric
+        self.bounds = bounds if bounds is not None else np.ones(self.N) # the bounds are assumed to be symmetric
         self.start = start if start is not None else self.getRandomTarget()
         self.goal = goal if goal is not None else self.getRandomTarget()
 
